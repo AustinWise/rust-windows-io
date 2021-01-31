@@ -1,6 +1,6 @@
 use crate::bindings::{
     windows::win32::system_services::HANDLE,
-    windows::win32::win_sock::{WSAIoctl, LPFN_ACCEPTEX},
+    windows::win32::win_sock::{WSAIoctl, WSASocketW, LPFN_ACCEPTEX},
 };
 
 use windows::Guid;
@@ -8,9 +8,9 @@ use windows::Guid;
 use std::convert::TryInto;
 use std::ffi::c_void;
 use std::io;
-use std::net::TcpListener;
-use std::net::ToSocketAddrs;
-use std::os::windows::io::AsRawSocket;
+use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::{TcpListener, TcpStream};
+use std::os::windows::io::{AsRawSocket, FromRawSocket, RawSocket};
 use std::ptr;
 
 use crate::iocp_threadpool;
@@ -111,9 +111,44 @@ impl AsyncTcpListener {
         })
     }
 
-    pub fn accept(&self) -> io::Result<AsyncTcpStream> {
-        //TODO: SO_UPDATE_ACCEPT_CONTEXT
+    //TODO: this is roughly based on the Socket code from std. Use that directly somehow?
+    fn _create_accept_socket(&self) -> io::Result<RawSocket> {
+        const AF_INET: i32 = 2;
+        const AF_INET6: i32 = 23;
+        const SOCK_STREAM: i32 = 1;
+        const IPPROTO_TCP: i32 = 6;
+        const WSA_FLAG_OVERLAPPED: u32 = 1;
+        const WSA_FLAG_NO_HANDLE_INHERIT: u32 = 0x80;
 
+        let fam = match self.listener.local_addr()? {
+            SocketAddr::V4(..) => AF_INET,
+            SocketAddr::V6(..) => AF_INET6,
+        };
+
+        unsafe {
+            let sock = WSASocketW(
+                fam,
+                SOCK_STREAM,
+                IPPROTO_TCP,
+                ptr::null_mut(),
+                0,
+                WSA_FLAG_OVERLAPPED | WSA_FLAG_NO_HANDLE_INHERIT,
+            );
+            if sock == !0 {
+                Err(io::Error::last_os_error())
+            } else {
+                Ok(sock as RawSocket)
+            }
+        }
+    }
+
+    pub fn accept(&self) -> io::Result<AsyncTcpStream> {
+        let stream: TcpStream;
+        unsafe {
+            stream = FromRawSocket::from_raw_socket(self._create_accept_socket()?);
+        }
+        iocp_threadpool::disable_callbacks_on_synchronous_completion(&stream)?;
+        //TODO: SO_UPDATE_ACCEPT_CONTEXT
         unimplemented!();
     }
 }
