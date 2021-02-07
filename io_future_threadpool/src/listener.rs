@@ -177,7 +177,7 @@ impl AsyncTcpListener {
                 listener_handle,
                 accept_handle,
                 receive_buff.as_mut_ptr() as *mut c_void,
-                receive_buff.len() as u32,
+                0,
                 socket_addr_size as u32,
                 socket_addr_size as u32,
                 &mut bytes_transferred,
@@ -192,9 +192,10 @@ impl AsyncTcpListener {
         })
         .await;
 
-        if receive_buff.len() != ret.get_number_of_bytes_transferred()? {
-            // TODO: I don't think this should ever get hit.
-            panic!("socket_addr_size != ret.get_number_of_bytes_transferred");
+        if 0 != ret.get_number_of_bytes_transferred()? {
+            // We did not specify that we wanted data, nor did we make the buffer big enough for any
+            // extra data.
+            panic!("Received socket data!?");
         }
 
         //TODO: GetAcceptExSockaddrs to cache it local and remote addresses?

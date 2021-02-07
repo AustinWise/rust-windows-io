@@ -55,7 +55,6 @@ async fn tokio_readme_main(pool: &ThreadPool) -> Result<(), Box<dyn std::error::
 
     loop {
         let socket = listener.accept().await?;
-        println!("got a socket");
 
         pool.spawn_ok(async move {
             let mut buf = [0; 1024];
@@ -71,8 +70,6 @@ async fn tokio_readme_main(pool: &ThreadPool) -> Result<(), Box<dyn std::error::
                         return;
                     }
                 };
-
-                println!("got: {}", n);
 
                 // Write the data back
                 if let Err(e) = socket.write_all(&buf[0..n]).await {

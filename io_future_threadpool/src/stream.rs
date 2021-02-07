@@ -84,7 +84,7 @@ impl AsyncTcpStream {
 
     pub async fn write_all(&self, buf: &[u8]) -> io::Result<()> {
         let mut ndx = 0;
-        while ndx <= buf.len() {
+        while ndx < buf.len() {
             let sent = self.poll_write(&buf[ndx..]).await?;
             if sent == 0
             {
