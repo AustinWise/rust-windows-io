@@ -16,6 +16,7 @@ mod iocp_threadpool;
 mod listener;
 mod stream;
 
+use listener::AsyncTcpListener;
 use stream::AsyncTcpStream;
 
 impl From<std::os::windows::io::RawSocket> for HANDLE {
@@ -36,7 +37,7 @@ async fn do_request() -> io::Result<()> {
     Ok(())
 }
 
-async fn main_inner(pool: &ThreadPool) -> Result<(), Box<dyn std::error::Error>> {
+async fn http_client(pool: &ThreadPool) -> Result<(), Box<dyn std::error::Error>> {
     let mut running_tasks = Vec::new();
     for _i in 0..100 {
         running_tasks.push(pool.spawn_with_handle(do_request())?);
@@ -49,8 +50,46 @@ async fn main_inner(pool: &ThreadPool) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
+async fn tokio_readme_main(pool: &ThreadPool) -> Result<(), Box<dyn std::error::Error>> {
+    let listener = AsyncTcpListener::bind("127.0.0.1:8080")?;
+
+    loop {
+        let socket = listener.accept().await?;
+        println!("got a socket");
+
+        pool.spawn_ok(async move {
+            let mut buf = [0; 1024];
+
+            // In a loop, read data from the socket and write the data back.
+            loop {
+                let n = match socket.poll_read(&mut buf).await {
+                    // socket closed
+                    Ok(n) if n == 0 => return,
+                    Ok(n) => n,
+                    Err(e) => {
+                        eprintln!("failed to read from socket; err = {:?}", e);
+                        return;
+                    }
+                };
+
+                println!("got: {}", n);
+
+                // Write the data back
+                if let Err(e) = socket.write_all(&buf[0..n]).await {
+                    eprintln!("failed to write to socket; err = {:?}", e);
+                    return;
+                }
+            }
+        });
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = ThreadPool::new().expect("Failed to build pool");
-    executor::block_on(main_inner(&pool))?;
+    if std::env::args().any(|a| a == "http") {
+        executor::block_on(http_client(&pool))?;
+    } else {
+        executor::block_on(tokio_readme_main(&pool))?;
+    }
     Ok(())
 }
