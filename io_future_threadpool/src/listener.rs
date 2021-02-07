@@ -38,7 +38,7 @@ impl WsaFunctionCache {
         };
         {
             let ret = atomic_ptr.load(Ordering::Relaxed);
-            if ret != ptr::null_mut() {
+            if ret.is_null() {
                 return Ok(ret);
             }
         }
@@ -184,7 +184,7 @@ impl AsyncTcpListener {
                 overlapped,
             );
 
-            if rc.is_ok() {
+            if rc.as_bool() {
                 Some(bytes_transferred as usize)
             } else {
                 None

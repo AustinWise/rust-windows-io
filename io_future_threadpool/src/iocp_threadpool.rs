@@ -152,12 +152,7 @@ where
     let state = Arc::new(Mutex::new(state));
     unsafe {
         let overlapped = Box::new(OverlappedAndIocpStateReference {
-            overlapped: OVERLAPPED {
-                internal: 0,
-                internal_high: 0,
-                anonymous: false,
-                h_event: HANDLE::default(),
-            },
+            overlapped: std::default::Default::default(),
             state: state.clone(),
             _pin: PhantomPinned,
         });
@@ -205,10 +200,10 @@ where
     //     There is a known bug that exists through Windows 7 with UDP and SetFileCompletionNotificationModes.
     //     So, don't try to enable skipping the completion port on success in this case.
     unsafe {
-        if SetFileCompletionNotificationModes(sock.as_raw_socket().into(), 3).is_err() {
-            Err(std::io::Error::last_os_error())
-        } else {
+        if SetFileCompletionNotificationModes(sock.as_raw_socket().into(), 3).as_bool() {
             Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
         }
     }
 }
