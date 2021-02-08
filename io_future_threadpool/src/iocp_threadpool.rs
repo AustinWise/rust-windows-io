@@ -3,10 +3,11 @@ use crate::bindings::{
     windows::win32::file_system::SetFileCompletionNotificationModes,
     windows::win32::system_services::{
         CancelThreadpoolIo, CloseThreadpoolIo, CreateThreadpoolIo, StartThreadpoolIo,
-        ERROR_IO_PENDING, HANDLE, OVERLAPPED, TP_CALLBACK_INSTANCE, TP_IO,
+        ERROR_IO_PENDING, OVERLAPPED, TP_CALLBACK_INSTANCE, TP_IO,
     },
 };
 
+use std::convert::TryInto;
 use std::future::Future;
 use std::io;
 use std::marker::PhantomPinned;
@@ -17,8 +18,8 @@ use std::ptr;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
-// Represents the result of an IO operation. Maps to the two interesting parameters of
-// PTP_WIN32_IO_CALLBACK and GetQueuedCompletionStatus.
+/// Represents the result of an IO operation. Maps to the two interesting parameters of
+/// PTP_WIN32_IO_CALLBACK and GetQueuedCompletionStatus.
 #[derive(Clone, Copy)]
 pub struct IocpResult {
     io_result: u32,
@@ -26,6 +27,7 @@ pub struct IocpResult {
 }
 
 impl IocpResult {
+    /// Returns an error if the operation failed, otherwise the number of bytes transferred.
     pub fn get_number_of_bytes_transferred(&self) -> io::Result<usize> {
         if self.io_result == 0 {
             Ok(self.number_of_bytes_transferred)
@@ -88,7 +90,7 @@ impl Future for IocpFuture {
     }
 }
 
-pub extern "system" fn io_completion_function(
+extern "system" fn io_completion_function(
     _instance: *mut TP_CALLBACK_INSTANCE,
     _context: *mut ::std::ffi::c_void,
     overlapped: *mut ::std::ffi::c_void,
@@ -106,26 +108,36 @@ pub extern "system" fn io_completion_function(
     }
 }
 
+/// Enables receiving asynchronous I/O completion notifications.
 pub struct Tpio {
     tp_io: *mut TP_IO,
 }
 
 impl Drop for Tpio {
     fn drop(&mut self) {
-        if !self.tp_io.is_null() {
-            unsafe {
-                CloseThreadpoolIo(self.tp_io);
-            }
-            self.tp_io = ptr::null_mut();
+        // MSDN says:
+        //     You should close the associated file handle and wait for all outstanding overlapped
+        //     I/O operations to complete before calling this function. You must not cause any more
+        //     overlapped I/O operations to occur after calling this function.
+        // Maybe we can do something with lifetimes to make sure this is dropped after the socket
+        // is closed?
+        // TODO: make sure this is dropped after the socket is closed.
+        unsafe {
+            CloseThreadpoolIo(self.tp_io);
         }
     }
 }
 
 impl Tpio {
-    pub fn new(hand: HANDLE) -> io::Result<Tpio> {
+    /// Creates a new [Tpio] for the given handle. This can be used with [start_async_io] for the
+    /// lifetime of the handle.
+    pub fn new<T>(sock: &T) -> io::Result<Tpio>
+    where
+        T: AsRawSocket,
+    {
         let tp_io = unsafe {
             CreateThreadpoolIo(
-                hand,
+                sock.as_raw_socket().try_into().unwrap(),
                 Some(io_completion_function),
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -141,18 +153,39 @@ impl Tpio {
 
 // The lifetime of the TP_IO must be at least as long as the handle it is tied to. It's free to move
 // between threads during that time. I'm not sure if there is a better way to model that.
+// TODO: is this ok?
 unsafe impl Send for Tpio {}
 unsafe impl Sync for Tpio {}
 
+/// Used to start an async I/O operation. Returns a future the completes when the operation
+/// completes.
+///
+/// # Remarks
+///
+/// This is a wrapper around the Win32 [`StartThreadpoolIo`](https://docs.microsoft.com/windows/win32/api/threadpoolapiset/nf-threadpoolapiset-startthreadpoolio)
+/// API.
+///
+/// The caller of this function must have first used [disable_callbacks_on_synchronous_completion]
+/// on the handle.
+///
+/// The caller must have previously created one and only one [Tpio] for their handle.
+///
+/// # Callback
+///
+/// The callback `op` should call a function that supports overlapped I/O such as `ReadFile`.
+/// The provided `OVERLAPPED` should be passed to the Win32 API. No completion routine should be passed.
+///
+/// If the operation completes synchronously, the call back should return the number of bytes transferred.
+/// Otherwise return [None]. `start_async_io` will handle calling `GetLastError` to determine if the
+/// I/O is pending or failed.
 pub fn start_async_io<F>(tp_io: &Tpio, op: F) -> IocpFuture
 where
     F: FnOnce(*mut OVERLAPPED) -> Option<usize>,
 {
-    let state = IocpFutureState::new();
-    let state = Arc::new(Mutex::new(state));
+    let state = Arc::new(Mutex::new(IocpFutureState::new()));
     unsafe {
         let overlapped = Box::new(OverlappedAndIocpStateReference {
-            overlapped: std::default::Default::default(),
+            overlapped: Default::default(),
             state: state.clone(),
             _pin: PhantomPinned,
         });
@@ -187,6 +220,9 @@ where
     IocpFuture { state }
 }
 
+/// Disables IOCP notifications when a operation completes synchronously. This MUST be called and
+/// MUST return Ok before [start_async_io] is called. Failure to do so may result in memory
+/// corruption.
 pub fn disable_callbacks_on_synchronous_completion<T>(sock: &T) -> io::Result<()>
 where
     T: AsRawSocket,

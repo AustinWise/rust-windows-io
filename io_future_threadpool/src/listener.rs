@@ -1,5 +1,4 @@
 use crate::bindings::{
-    windows::win32::system_services::HANDLE,
     windows::win32::win_sock::{
         setsockopt, WSAIoctl, WSASocketW, LPFN_ACCEPTEX, LPFN_GETACCEPTEXSOCKADDRS,
     },
@@ -111,8 +110,7 @@ impl AsyncTcpListener {
         let listener = TcpListener::bind(addr)?;
         iocp_threadpool::disable_callbacks_on_synchronous_completion(&listener)?;
         let accept_fnptr = WsaFunctionCache::get_acceptex(&listener)?;
-        let hand: HANDLE = listener.as_raw_socket().try_into().unwrap();
-        let tp_io = iocp_threadpool::Tpio::new(hand)?;
+        let tp_io = iocp_threadpool::Tpio::new(&listener)?;
         Ok(AsyncTcpListener {
             listener,
             tp_io,

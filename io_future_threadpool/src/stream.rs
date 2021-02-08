@@ -1,5 +1,4 @@
 use crate::bindings::{
-    windows::win32::system_services::HANDLE,
     windows::win32::win_sock::{WSARecv, WSASend, WSABUF},
 };
 
@@ -21,8 +20,7 @@ pub struct AsyncTcpStream {
 impl AsyncTcpStream {
     pub(crate) fn new(stream: TcpStream) -> io::Result<AsyncTcpStream> {
         iocp_threadpool::disable_callbacks_on_synchronous_completion(&stream)?;
-        let hand: HANDLE = stream.as_raw_socket().try_into().unwrap();
-        let tp_io = iocp_threadpool::Tpio::new(hand)?;
+        let tp_io = iocp_threadpool::Tpio::new(&stream)?;
         Ok(AsyncTcpStream { stream, tp_io })
     }
 
