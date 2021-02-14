@@ -1,4 +1,4 @@
-use crate::bindings::{
+use bindings::{
     windows::win32::win_sock::{
         setsockopt, WSAIoctl, WSASocketW, LPFN_ACCEPTEX, LPFN_GETACCEPTEXSOCKADDRS,
     },

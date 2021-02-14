@@ -1,6 +1,10 @@
 fn main() {
     windows::build!(
-        windows::win32::file_system::SetFileCompletionNotificationModes,
+        windows::win32::file_system::{
+            SetFileCompletionNotificationModes,
+            CreateIoCompletionPort,
+            GetQueuedCompletionStatus
+        },
         windows::win32::system_services::{
             CancelThreadpoolIo,
             CloseThreadpoolIo,
@@ -16,11 +20,13 @@ fn main() {
             LPFN_GETACCEPTEXSOCKADDRS,
             setsockopt,
             WSABUF,
+            WSAGetLastError,
             WSAIoctl,
             WSARecv,
             WSASend,
             WSASocketW,
         },
         windows::win32::debug::GetLastError,
+        windows::win32::windows_programming::CloseHandle,
     );
 }

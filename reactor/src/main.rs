@@ -1,7 +1,3 @@
-mod bindings {
-    ::windows::include_bindings!();
-}
-
 use bindings::{
     windows::win32::file_system::{
         CreateIoCompletionPort, GetQueuedCompletionStatus, SetFileCompletionNotificationModes,
@@ -18,12 +14,6 @@ use std::net::TcpStream;
 use std::net::ToSocketAddrs;
 use std::os::windows::io::AsRawSocket;
 use std::ptr;
-
-impl From<std::os::windows::io::RawSocket> for HANDLE {
-    fn from(sock: std::os::windows::io::RawSocket) -> Self {
-        return HANDLE(sock.try_into().unwrap());
-    }
-}
 
 const INVALID_HANDLE_VALUE: HANDLE = HANDLE(-1);
 
@@ -76,7 +66,7 @@ impl WindowsIoCompletionPort {
             // 3 = FILE_SKIP_COMPLETION_PORT_ON_SUCCESS | FILE_SKIP_SET_EVENT_ON_HANDLE
             // It prevents a completion from being queued to the IOCP if the operation
             // completes synchronously.
-            if SetFileCompletionNotificationModes(sock.as_raw_socket().into(), 3).is_err() {
+            if !SetFileCompletionNotificationModes(sock.as_raw_socket().into(), 3).as_bool() {
                 return Err(std::io::Error::last_os_error());
             }
         }
@@ -94,12 +84,7 @@ impl WindowsIoCompletionPort {
     {
         // If multiple threads were actually involved, you would need to make sure this overlapped
         // was alive for the duration of the async IO.
-        let mut overlapped = Box::new(OVERLAPPED {
-            internal: 0,
-            internal_high: 0,
-            anonymous: false,
-            h_event: HANDLE::default(),
-        });
+        let mut overlapped: Box<OVERLAPPED> = Box::new(Default::default());
         let mut number_of_bytes_transferred: u32 = 0;
         unsafe {
             // the WSASend and WSARecv will make a copy of this buffer,
@@ -130,14 +115,14 @@ impl WindowsIoCompletionPort {
                     println!("async!");
                     let mut completion_key: u32 = 0;
                     let mut returned_overlapped: *mut OVERLAPPED = ptr::null_mut();
-                    if GetQueuedCompletionStatus(
+                    if !GetQueuedCompletionStatus(
                         self.handle,
                         &mut number_of_bytes_transferred,
                         &mut completion_key,
                         &mut returned_overlapped,
                         1000,
                     )
-                    .is_err()
+                    .as_bool()
                     {
                         // TODO: check the returned_overlapped to differentiate between GetQueuedCompletionStatus
                         // failing and the IO operation failing.

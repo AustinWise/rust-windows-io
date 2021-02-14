@@ -1,11 +1,3 @@
-#[allow(dead_code)]
-mod bindings {
-    ::windows::include_bindings!();
-}
-
-use bindings::windows::win32::system_services::HANDLE;
-
-use std::convert::TryInto;
 use std::io;
 
 use futures::executor;
@@ -18,12 +10,6 @@ mod stream;
 
 use listener::AsyncTcpListener;
 use stream::AsyncTcpStream;
-
-impl From<std::os::windows::io::RawSocket> for HANDLE {
-    fn from(sock: std::os::windows::io::RawSocket) -> Self {
-        HANDLE(sock.try_into().unwrap())
-    }
-}
 
 const REQUEST: &str = "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: Close\r\n\r\n";
 
