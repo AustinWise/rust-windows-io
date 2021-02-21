@@ -1,19 +1,24 @@
 fn main() {
     windows::build!(
         windows::win32::file_system::{
-            SetFileCompletionNotificationModes,
             CreateIoCompletionPort,
-            GetQueuedCompletionStatus
+            GetQueuedCompletionStatus,
+            SetFileCompletionNotificationModes,
         },
         windows::win32::system_services::{
             CancelThreadpoolIo,
             CloseThreadpoolIo,
+            CloseThreadpoolWork,
             CreateThreadpoolIo,
+            CreateThreadpoolWork,
             ERROR_IO_PENDING,
             OVERLAPPED,
+            PTP_WORK_CALLBACK,
             StartThreadpoolIo,
+            SubmitThreadpoolWork,
             TP_CALLBACK_INSTANCE,
             TP_IO,
+            TP_WORK,
         },
         windows::win32::win_sock::{
             LPFN_ACCEPTEX,
