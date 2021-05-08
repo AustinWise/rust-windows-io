@@ -1,5 +1,6 @@
 use bindings::{
-    windows::win32::win_sock::{
+    Windows::Win32::SystemServices::PSTR,
+    Windows::Win32::WinSock::{
         setsockopt, WSAIoctl, WSASocketW, LPFN_ACCEPTEX, LPFN_GETACCEPTEXSOCKADDRS,
     },
 };
@@ -165,27 +166,29 @@ impl AsyncTcpListener {
         // Hypothetically if we made this bigger we could receive the incoming connection's initial
         // data. Right now it is only the size of the socket addresses.
         let mut receive_buff: Vec<u8> = vec![0; 2 * socket_addr_size];
-        let listener_handle: usize = self.listener.as_raw_socket().try_into().unwrap();
+        let mut listener_handle: usize = self.listener.as_raw_socket().try_into().unwrap();
         let accept_handle: usize = stream.as_raw_socket().try_into().unwrap();
 
         let ret = iocp_threadpool::start_async_io(&self.tp_io, |overlapped| {
             let mut bytes_transferred: u32 = 0;
             let fnptr = self.accept_fnptr;
-            let rc = fnptr(
-                listener_handle,
-                accept_handle,
-                receive_buff.as_mut_ptr() as *mut c_void,
-                0,
-                socket_addr_size as u32,
-                socket_addr_size as u32,
-                &mut bytes_transferred,
-                overlapped,
-            );
+            unsafe {
+                let rc = fnptr(
+                    listener_handle,
+                    accept_handle,
+                    receive_buff.as_mut_ptr() as *mut c_void,
+                    0,
+                    socket_addr_size as u32,
+                    socket_addr_size as u32,
+                    &mut bytes_transferred,
+                    overlapped,
+                );
 
-            if rc.as_bool() {
-                Some(bytes_transferred as usize)
-            } else {
-                None
+                if rc.as_bool() {
+                    Some(bytes_transferred as usize)
+                } else {
+                    None
+                }
             }
         })
         .await;
@@ -205,7 +208,7 @@ impl AsyncTcpListener {
                 accept_handle,
                 SOL_SOCKET,
                 SO_UPDATE_ACCEPT_CONTEXT,
-                &listener_handle as *const usize as *const i8,
+                PSTR(&mut listener_handle as *mut usize as *mut u8),
                 std::mem::size_of::<usize>() as i32,
             );
             if ret != 0 {

@@ -1,5 +1,6 @@
 use bindings::{
-    windows::win32::win_sock::{WSARecv, WSASend, WSABUF},
+    Windows::Win32::SystemServices::PSTR,
+    Windows::Win32::WinSock::{WSARecv, WSASend, WSABUF},
 };
 
 use std::convert::TryInto;
@@ -36,7 +37,7 @@ impl AsyncTcpStream {
 
         let ret = start_async_io(&self.tp_io, |overlapped| unsafe {
             let mut wsabuf = WSABUF {
-                buf: buf.as_ptr() as *mut i8,
+                buf: PSTR(buf.as_ptr() as *mut u8),
                 len: buf.len().try_into().unwrap(),
             };
             let mut sent: u32 = 0;
@@ -56,7 +57,7 @@ impl AsyncTcpStream {
 
         let ret = start_async_io(&self.tp_io, |overlapped| unsafe {
             let mut wsabuf = WSABUF {
-                buf: buf.as_ptr() as *mut i8,
+                buf: PSTR(buf.as_ptr() as *mut u8),
                 len: buf.len().try_into().unwrap(),
             };
             let mut received: u32 = 0;
@@ -84,8 +85,7 @@ impl AsyncTcpStream {
         let mut ndx = 0;
         while ndx < buf.len() {
             let sent = self.poll_write(&buf[ndx..]).await?;
-            if sent == 0
-            {
+            if sent == 0 {
                 return Err(io::Error::new(io::ErrorKind::Other, "disconnected"));
             }
             ndx += sent;

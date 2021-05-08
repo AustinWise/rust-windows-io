@@ -1,13 +1,13 @@
 use bindings::{
-    windows::win32::debug::GetLastError,
-    windows::win32::file_system::SetFileCompletionNotificationModes,
-    windows::win32::system_services::{
-        CancelThreadpoolIo, CloseThreadpoolIo, CreateThreadpoolIo, StartThreadpoolIo,
-        ERROR_IO_PENDING, OVERLAPPED, TP_CALLBACK_INSTANCE, TP_IO,
+    Windows::Win32::Debug::GetLastError,
+    Windows::Win32::Debug::WIN32_ERROR,
+    Windows::Win32::FileSystem::SetFileCompletionNotificationModes,
+    Windows::Win32::SystemServices::{
+        CancelThreadpoolIo, CloseThreadpoolIo, CreateThreadpoolIo, StartThreadpoolIo, OVERLAPPED,
+        TP_CALLBACK_INSTANCE, TP_IO,
     },
 };
 
-use std::convert::TryInto;
 use std::future::Future;
 use std::io;
 use std::marker::PhantomPinned;
@@ -22,17 +22,17 @@ use std::task::{Context, Poll, Waker};
 /// PTP_WIN32_IO_CALLBACK and GetQueuedCompletionStatus.
 #[derive(Clone, Copy)]
 pub struct IocpResult {
-    io_result: u32,
+    io_result: WIN32_ERROR,
     number_of_bytes_transferred: usize,
 }
 
 impl IocpResult {
     /// Returns an error if the operation failed, otherwise the number of bytes transferred.
     pub fn get_number_of_bytes_transferred(&self) -> io::Result<usize> {
-        if self.io_result == 0 {
+        if self.io_result == WIN32_ERROR::NO_ERROR {
             Ok(self.number_of_bytes_transferred)
         } else {
-            Err(io::Error::from_raw_os_error(self.io_result as i32))
+            Err(io::Error::from_raw_os_error(self.io_result.0 as i32))
         }
     }
 }
@@ -56,7 +56,11 @@ struct OverlappedAndIocpStateReference {
 }
 
 impl OverlappedAndIocpStateReference {
-    fn process_iocp_completion(&mut self, io_result: u32, number_of_bytes_transferred: usize) {
+    fn process_iocp_completion(
+        &mut self,
+        io_result: WIN32_ERROR,
+        number_of_bytes_transferred: usize,
+    ) {
         let mut mutable_state = self.state.lock().unwrap();
         mutable_state.result = Some(IocpResult {
             io_result,
@@ -101,7 +105,7 @@ extern "system" fn io_completion_function(
 ) {
     let unwound = catch_unwind(|| unsafe {
         let mut overlapped = Box::from_raw(overlapped as *mut OverlappedAndIocpStateReference);
-        overlapped.process_iocp_completion(io_result, number_of_bytes_transferred);
+        overlapped.process_iocp_completion(WIN32_ERROR(io_result), number_of_bytes_transferred);
     });
     if unwound.is_err() {
         //TODO: is this the right thing to do when a panic happens?
@@ -138,7 +142,7 @@ impl Tpio {
     {
         let tp_io = unsafe {
             CreateThreadpoolIo(
-                sock.as_raw_socket().try_into().unwrap(),
+                sock.as_raw_socket(),
                 Some(io_completion_function),
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -196,7 +200,7 @@ where
 
         let rc = match maybe_sync_completion {
             Some(number_of_bytes_transferred) => IocpResult {
-                io_result: 0,
+                io_result: WIN32_ERROR::NO_ERROR,
                 number_of_bytes_transferred,
             },
             None => IocpResult {
@@ -205,7 +209,7 @@ where
             },
         };
 
-        if rc.io_result as i32 == ERROR_IO_PENDING {
+        if rc.io_result == WIN32_ERROR::ERROR_IO_PENDING {
             //io_completion_function will take have of cleaning up the Box
         } else {
             //cleanup resources from async IO that never happened
@@ -237,7 +241,7 @@ where
     //     There is a known bug that exists through Windows 7 with UDP and SetFileCompletionNotificationModes.
     //     So, don't try to enable skipping the completion port on success in this case.
     unsafe {
-        if SetFileCompletionNotificationModes(sock.as_raw_socket().into(), 3).as_bool() {
+        if SetFileCompletionNotificationModes(sock.as_raw_socket(), 3).as_bool() {
             Ok(())
         } else {
             Err(std::io::Error::last_os_error())

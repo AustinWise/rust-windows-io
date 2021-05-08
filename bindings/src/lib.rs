@@ -2,10 +2,26 @@
 
 use std::convert::TryInto;
 
-use crate::windows::win32::system_services::HANDLE;
+use windows::IntoParam;
+use windows::Param;
 
-impl From<std::os::windows::io::RawSocket> for HANDLE {
-    fn from(sock: std::os::windows::io::RawSocket) -> Self {
-        HANDLE(sock.try_into().unwrap())
+use crate::Windows::Win32::SystemServices::{HANDLE, OVERLAPPED, OVERLAPPED_0};
+
+impl<'a> IntoParam<'a, HANDLE> for std::os::windows::io::RawSocket {
+    fn into_param(self) -> Param<'a, HANDLE> {
+        Param::Owned(HANDLE(self.try_into().unwrap()))
+    }
+}
+
+impl Default for OVERLAPPED {
+    fn default() -> OVERLAPPED {
+        OVERLAPPED {
+            Anonymous: OVERLAPPED_0 {
+                Anonymous: Default::default(),
+            },
+            hEvent: Default::default(),
+            Internal: 0,
+            InternalHigh: 0,
+        }
     }
 }

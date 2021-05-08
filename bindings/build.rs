@@ -1,24 +1,25 @@
 fn main() {
     windows::build!(
-        windows::win32::file_system::{
+        Windows::Win32::FileSystem::{
             SetFileCompletionNotificationModes,
             CreateIoCompletionPort,
             GetQueuedCompletionStatus
         },
-        windows::win32::system_services::{
+        Windows::Win32::SystemServices::{
             CancelThreadpoolIo,
             CloseThreadpoolIo,
             CreateThreadpoolIo,
-            ERROR_IO_PENDING,
+            INVALID_HANDLE_VALUE,
             OVERLAPPED,
             StartThreadpoolIo,
             TP_CALLBACK_INSTANCE,
             TP_IO,
         },
-        windows::win32::win_sock::{
+        Windows::Win32::WinSock::{
             LPFN_ACCEPTEX,
             LPFN_GETACCEPTEXSOCKADDRS,
             setsockopt,
+            WSA_ERROR,
             WSABUF,
             WSAGetLastError,
             WSAIoctl,
@@ -26,7 +27,10 @@ fn main() {
             WSASend,
             WSASocketW,
         },
-        windows::win32::debug::GetLastError,
-        windows::win32::windows_programming::CloseHandle,
+        Windows::Win32::Debug::{
+            GetLastError,
+            WIN32_ERROR,
+        },
+        Windows::Win32::WindowsProgramming::CloseHandle,
     );
 }

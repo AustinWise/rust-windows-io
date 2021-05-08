@@ -1,21 +1,17 @@
 use bindings::{
-    windows::win32::file_system::{
+    Windows::Win32::FileSystem::{
         CreateIoCompletionPort, GetQueuedCompletionStatus, SetFileCompletionNotificationModes,
     },
-    windows::win32::system_services::HANDLE,
-    windows::win32::system_services::{ERROR_IO_PENDING, OVERLAPPED},
-    windows::win32::win_sock::{WSAGetLastError, WSARecv, WSASend, WSABUF},
-    windows::win32::windows_programming::CloseHandle,
+    Windows::Win32::SystemServices::{HANDLE, INVALID_HANDLE_VALUE, OVERLAPPED},
+    Windows::Win32::WinSock::{WSAGetLastError, WSARecv, WSASend, WSABUF, WSA_ERROR},
+    Windows::Win32::WindowsProgramming::CloseHandle,
 };
 
-use std::convert::TryInto;
 use std::mem::transmute;
 use std::net::TcpStream;
 use std::net::ToSocketAddrs;
 use std::os::windows::io::AsRawSocket;
 use std::ptr;
-
-const INVALID_HANDLE_VALUE: HANDLE = HANDLE(-1);
 
 enum OverlappedResult {
     CompletedSynchronously,
@@ -28,10 +24,10 @@ fn process_overlapped_return_code(rc: i32) -> Result<OverlappedResult, std::io::
     }
     unsafe {
         let rc = WSAGetLastError();
-        if rc == ERROR_IO_PENDING {
+        if rc == WSA_ERROR::WSA_IO_PENDING {
             Ok(OverlappedResult::Pending)
         } else {
-            Err(std::io::Error::from_raw_os_error(rc))
+            Err(std::io::Error::from_raw_os_error(rc.0))
         }
     }
 }
@@ -58,7 +54,7 @@ impl WindowsIoCompletionPort {
     ) -> std::io::Result<TcpStream> {
         let sock = TcpStream::connect(addr)?;
         unsafe {
-            if CreateIoCompletionPort(sock.as_raw_socket().into(), self.handle, completion_key, 0)
+            if CreateIoCompletionPort(sock.as_raw_socket(), self.handle, completion_key, 0)
                 == HANDLE::default()
             {
                 return Err(std::io::Error::last_os_error());
@@ -66,7 +62,7 @@ impl WindowsIoCompletionPort {
             // 3 = FILE_SKIP_COMPLETION_PORT_ON_SUCCESS | FILE_SKIP_SET_EVENT_ON_HANDLE
             // It prevents a completion from being queued to the IOCP if the operation
             // completes synchronously.
-            if !SetFileCompletionNotificationModes(sock.as_raw_socket().into(), 3).as_bool() {
+            if !SetFileCompletionNotificationModes(sock.as_raw_socket(), 3).as_bool() {
                 return Err(std::io::Error::last_os_error());
             }
         }
@@ -113,7 +109,7 @@ impl WindowsIoCompletionPort {
                     // you could use the `StartThreadpoolIo` API which manages the threadpool for you.
                     // ~~~~~~~~~~~~~~~~~~~~
                     println!("async!");
-                    let mut completion_key: u32 = 0;
+                    let mut completion_key: usize = 0;
                     let mut returned_overlapped: *mut OVERLAPPED = ptr::null_mut();
                     if !GetQueuedCompletionStatus(
                         self.handle,
